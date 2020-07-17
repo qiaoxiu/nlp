@@ -1,16 +1,27 @@
 __author__ = 'multiangle'
+# 这是实现 霍夫曼树相关的文件， 主要用于 针对层次softmax进行 word2vec 优化方案的一种
+'''
+至于 为什么要进行层次softmax  可以简单理解 因为词表很大 针对上完个类别单词进行softmax 计算量大 更新参数过多 无法训练，而采用softmax 层次化  只需要 计算几个有限单词的sigmod 就可以 更新参数也非常少
+提高训练速度
 
+什么是霍夫曼树 简单理解就是 将训练文本 进行词频统计 通过构建加权最短路径来构造二叉树 这样 词频高的 位置在前 词频低的位置在后 每一个 霍夫曼编码代表一个词 路径 并且是唯一 不是其他词的前缀
+
+'''
 import numpy as np
 
 class HuffmanTreeNode():
     def __init__(self,value,possibility):
         # common part of leaf node and tree node
+        # 词频概率，训练文本出现的次数
         self.possibility = possibility
+        # 左右子节点
         self.left = None
         self.right = None
         # value of leaf node  will be the word, and be
         # mid vector in tree node
+        # 叶节点是学习的词向量  非叶子节点是中间变量 即 wx 与 xite
         self.value = value # the value of word
+        # 存储霍夫曼码
         self.Huffman = "" # store the huffman code
 
     def __str__(self):
@@ -21,11 +32,14 @@ class HuffmanTree():
     def __init__(self, word_dict, vec_len=15000):
         self.vec_len = vec_len      # the length of word vector
         self.root = None
-
+        # 所有词汇
         word_dict_list = list(word_dict.values())
+        # 根据所有词汇信息 创建节点
         node_list = [HuffmanTreeNode(x['word'],x['possibility']) for x in word_dict_list]
+        # 构建霍夫曼树
         self.build_tree(node_list)
         # self.build_CBT(node_list)
+        # 生成霍夫曼树的霍夫曼编码
         self.generate_huffman_code(self.root, word_dict)
 
     def build_tree(self,node_list):
@@ -45,7 +59,9 @@ class HuffmanTree():
                     i2 = i
                     if node_list[i2].possibility < node_list[i1].possibility :
                         [i1,i2] = [i2,i1]
+             #根据 叶节点1 和叶节点2 生成叶节点 也就是中间变量 其中 用来 存放xite  
             top_node = self.merge(node_list[i1],node_list[i2])
+            # 删除节点1 和节点2  将 新生成的非叶节点进行 加入 以进行后续 循环构建霍夫曼树
             if i1<i2:
                 node_list.pop(i2)
                 node_list.pop(i1)
@@ -90,6 +106,7 @@ class HuffmanTree():
         # self.generate_huffman_code(node.right, word_dict)
 
         # use stack butnot recursion in this edition
+        # 左子树 编码是1 右子树 编码是0 先左子树 在右字数 设置编码链
         stack = [self.root]
         while (stack.__len__()>0):
             node = stack.pop()
@@ -106,7 +123,9 @@ class HuffmanTree():
             word_dict[word]['Huffman'] = code
 
     def merge(self,node1,node2):
+        # 新生成的非叶节点的词频是 俩个叶节点的加和
         top_pos = node1.possibility + node2.possibility
+        # 将非叶节点向量进行初始化
         top_node = HuffmanTreeNode(np.zeros([1,self.vec_len]), top_pos)
         if node1.possibility >= node2.possibility :
             top_node.left = node1
