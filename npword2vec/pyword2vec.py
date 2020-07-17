@@ -1,5 +1,12 @@
 __author__ = 'multiangle'
-
+'''
+ word2vec numpy 实现 cbow 和skipgram
+ 1. cbow 通过上下文(多个词) 预测中心词 多对一 
+ 2. skipgram 通过中心词 预测上下文  一对多
+ 
+ 通过梯度下降更新相关参数 其中参数是非叶节点的中间向量 xite 叶节点的词向量
+ 其中使用的是语言模型 作为目标函数 所谓语言模型 就是 前面词 预测后面词的概率 属于条件概率优化问题 
+'''
 import math
 
 from WordCount import WordCounter,MulCounter
@@ -12,12 +19,17 @@ from sklearn import preprocessing
 
 class Word2Vec():
     def __init__(self, vec_len=15000, learn_rate=0.025, win_len=5, model='cbow'):
+        # 分词列表
         self.cutted_text_list = None
+        # 词库表大小
         self.vec_len = vec_len
         self.learn_rate = learn_rate
+        # 窗口大小 是n-gram 用于定义上下文大小
         self.win_len = win_len
         self.model = model
+        # 词向量相关 包括 词向量 词频 霍夫曼编码 词
         self.word_dict = None  # each element is a dict, including: word,possibility,vector,huffmancode
+        
         self.huffman = None    # the object of HuffmanTree
 
     def Load_Word_Freq(self,word_freq_path):
@@ -38,12 +50,13 @@ class Word2Vec():
         if isinstance(word_freq,dict):
             # if word_freq is in type of dictionary
             sum_count = sum(word_freq.values())
+            # 根据词频等信息进行词表记录
             for word in word_freq:
                 temp_dict = dict(
                     word = word,
                     freq = word_freq[word],
                     possibility = word_freq[word]/sum_count,
-                    vector = np.random.random([1,self.vec_len]),
+                    vector = np.random.random([1,self.vec_len]), # 随机生成词向量
                     Huffman = None
                 )
                 word_dict[word] = temp_dict
@@ -89,11 +102,14 @@ class Word2Vec():
         if self.huffman==None:
             # if the dict is not loaded, it will generate a new dict
             if self.word_dict==None :
+                # 词频统计
                 wc = WordCounter(text_list)
+                # 生成词表信息
                 self.__Gnerate_Word_Dict(wc.count_res.larger_than(5))
                 self.cutted_text_list = wc.text_list
 
             # generate a huffman tree according to the possibility of words
+            # 根据词表信息 生成 一个 霍夫曼树
             self.huffman = HuffmanTree(self.word_dict,vec_len=self.vec_len)
         print('word_dict and huffman tree already generated, ready to train vector')
 
@@ -105,7 +121,7 @@ class Word2Vec():
             method = self.__Deal_Gram_CBOW
         else:
             method = self.__Deal_Gram_SkipGram
-
+        # 根据选择cbow还是skipgram 
         if self.cutted_text_list:
             # if the text has been cutted
             total = self.cutted_text_list.__len__()
@@ -130,7 +146,9 @@ class Word2Vec():
 
         if not self.word_dict.__contains__(word):
             return
-
+        # cbow 模型 多个上下文词 预测中心词  
+        # word 是中心词 gram_word_list 是上下文词
+        # 对存在词表里的 上下文词进行 加和 来训练 预测中心词
         word_huffman = self.word_dict[word]['Huffman']
         gram_vector_sum = np.zeros([1,self.vec_len])
         for i in range(gram_word_list.__len__())[::-1]:
@@ -142,9 +160,9 @@ class Word2Vec():
 
         if gram_word_list.__len__()==0:
             return
-
+        # 对 中心词 上下文词向量参与计算来 更新 词向量 和中间向量 
         e = self.__GoAlong_Huffman(word_huffman,gram_vector_sum,self.huffman.root)
-
+        
         for item in gram_word_list:
             self.word_dict[item]['vector'] += e
             self.word_dict[item]['vector'] = preprocessing.normalize(self.word_dict[item]['vector'])
@@ -153,7 +171,11 @@ class Word2Vec():
 
         if not self.word_dict.__contains__(word):
             return
-
+       '''
+       skipgram,根据中心词预测上下文词 输入一个词 输出 多个词与之对应
+       预测词在 词表里 然后根据 中心词 预测gram_word_list 中的每一个词 会得到 多个 gram_word 然后更新相应的中间向量和词向量
+       最终的到中间向量和词向量
+       '''
         word_vector = self.word_dict[word]['vector']
         for i in range(gram_word_list.__len__())[::-1]:
             if not self.word_dict.__contains__(gram_word_list[i]):
@@ -171,6 +193,13 @@ class Word2Vec():
     def __GoAlong_Huffman(self,word_huffman,input_vector,root):
 
         node = root
+        # 通过输入 预测词的霍夫曼编码 和 输入x 更新参数
+       '''
+        1.遍历霍夫曼编码 得到霍夫曼路径
+        2. 中间向量 和 输入上下文词 相乘 进行概率计算 使用sigmoid
+        3.计算中间向量梯度和更新，根据公式 (1-dt-q)*xite  更新中间向量
+        4.计算词向量梯度和更新，根据公司 (1-dt-q)*x 
+       '''
         e = np.zeros([1,self.vec_len])
         for level in range(word_huffman.__len__()):
             huffman_charat = word_huffman[level]
